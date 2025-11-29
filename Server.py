@@ -16,6 +16,7 @@ class Server:
 		# Receive client info (address,port) through RTSP/TCP session
 		while True:
 			clientInfo = {}
+			# Sau khi được accept nó sẽ trả về 2 tham số là client socket và địa chỉ của client
 			clientInfo['rtspSocket'] = rtspSocket.accept()
 			ServerWorker(clientInfo).run()		
 

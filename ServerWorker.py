@@ -38,12 +38,16 @@ class ServerWorker:
 	
 	def processRtspRequest(self, data):
 		"""Process RTSP request sent from the client."""
-		# Get the request type
+		# Example:
+		# C: SETUP movie.Mjpeg RTSP/1.0 
+		# C: CSeq: 1 
+		# C: Transport: RTP/UDP; client_port=25000
+
+		# Get the request type and fileName
 		request = data.split('\n')
 		line1 = request[0].split(' ')
+
 		requestType = line1[0]
-		
-		# Get the media file name
 		filename = line1[1]
 		
 		# Get the RTSP sequence number 
@@ -110,6 +114,7 @@ class ServerWorker:
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
 		while True:
+			# Can make feature speed control (FPS, Frame per second)
 			self.clientInfo['event'].wait(0.05) 
 			
 			# Stop sending if request is PAUSE or TEARDOWN
