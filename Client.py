@@ -95,6 +95,7 @@ class Client:
 	
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
+		dataBuffer = bytearray()
 		while True:
 			try:
 				data = self.rtpSocket.recv(20480)
@@ -103,11 +104,33 @@ class Client:
 					rtpPacket.decode(data)
 					
 					currFrameNbr = rtpPacket.seqNum()
-					print("Current Seq Num: " + str(currFrameNbr))
+					# print("Current Seq Num: " + str(currFrameNbr))
 										
 					if currFrameNbr > self.frameNbr: # Discard the late packet
 						self.frameNbr = currFrameNbr
-						self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
+						
+						# Append payload to buffer
+						dataBuffer.extend(rtpPacket.getPayload())
+						
+						# Check for Marker bit
+						if rtpPacket.getMarker() == 1:
+							self.updateMovie(self.writeFrame(dataBuffer))
+							dataBuffer = bytearray() # Reset buffer for next frame
+					elif currFrameNbr == self.frameNbr:
+						# This is a fragment of the current frame (or duplicate)
+						# For simplicity in this project context, we assume in-order delivery of fragments for the same frame
+						# or that we are just appending fragments.
+						# Real implementation might need more complex sequence handling.
+						# But here, seqNum is Frame Number. All fragments of same frame have SAME seqNum?
+						# Wait, in my server implementation:
+						# self.makeRtp(chunk, frameNumber, marker)
+						# Yes, all fragments have SAME sequence number (frameNumber).
+						
+						dataBuffer.extend(rtpPacket.getPayload())
+						
+						if rtpPacket.getMarker() == 1:
+							self.updateMovie(self.writeFrame(dataBuffer))
+							dataBuffer = bytearray()
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
 				if self.playEvent.isSet(): 
@@ -131,8 +154,16 @@ class Client:
 	
 	def updateMovie(self, imageFile):
 		"""Update the image file as video frame in the GUI."""
-		photo = ImageTk.PhotoImage(Image.open(imageFile))
-		self.label.configure(image = photo, height=288) 
+		try:
+			photo = ImageTk.PhotoImage(Image.open(imageFile))
+			# Schedule the GUI update on the main thread to avoid freezing
+			self.master.after(0, self.updateLabel, photo)
+		except Exception as e:
+			print("Update Movie Error: ", e)
+
+	def updateLabel(self, photo):
+		"""Update the label with the new photo (must be called from main thread)."""
+		self.label.configure(image = photo, height=photo.height()) 
 		self.label.image = photo
 		
 	def connectToServer(self):

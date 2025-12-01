@@ -115,7 +115,7 @@ class ServerWorker:
 		"""Send RTP packets over UDP."""
 		while True:
 			# Can make feature speed control (FPS, Frame per second)
-			self.clientInfo['event'].wait(0.05) 
+			self.clientInfo['event'].wait(0.033) 
 			
 			# Stop sending if request is PAUSE or TEARDOWN
 			if self.clientInfo['event'].isSet(): 
@@ -127,20 +127,33 @@ class ServerWorker:
 				try:
 					address = self.clientInfo['rtspSocket'][1][0]
 					port = int(self.clientInfo['rtpPort'])
-					self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber),(address,port))
+					
+					# Fragmentation logic
+					MAX_PAYLOAD_SIZE = 1400
+					if len(data) > MAX_PAYLOAD_SIZE:
+						# Split data into chunks
+						chunks = [data[i:i+MAX_PAYLOAD_SIZE] for i in range(0, len(data), MAX_PAYLOAD_SIZE)]
+						for i, chunk in enumerate(chunks):
+							marker = 0
+							if i == len(chunks) - 1:
+								marker = 1 # Last fragment
+							self.clientInfo['rtpSocket'].sendto(self.makeRtp(chunk, frameNumber, marker),(address,port))
+					else:
+						# No fragmentation needed
+						self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber, 1),(address,port))
 				except:
 					print("Connection Error")
 					#print('-'*60)
 					#traceback.print_exc(file=sys.stdout)
 					#print('-'*60)
 
-	def makeRtp(self, payload, frameNbr):
+	def makeRtp(self, payload, frameNbr, marker=0):
 		"""RTP-packetize the video data."""
 		version = 2
 		padding = 0
 		extension = 0
 		cc = 0
-		marker = 0
+		# marker = 0 # Removed hardcoded marker
 		pt = 26 # MJPEG type
 		seqnum = frameNbr
 		ssrc = 0 
