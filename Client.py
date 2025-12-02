@@ -92,30 +92,79 @@ class Client:
 			self.playEvent.clear()
 			self.sendRtspRequest(self.PLAY)
 	
+	# Update code: 
+    # Ý tưởng chính của code update: Chuẩn bị thêm một buffer
+    # khi nhận được gói tin thì chưa hiển thị mà ném vào buffer
+    # kiểm tra marker (xem có phải gói tin cuối cùng chưa)
+    # nếu có (marker = 1) thì lấy hết dữ liệu của buffer rồi hiển thị 
+    # nếu chưa (marker = 0) thì tiếp tục hứng dữ liệu
+    # sau khi hiển thị toàn bộ một gói tin thì reset buffer
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
+        #Tạo buffer chứa các mảnh dữ liệu 
+		self.currentFrameBuffer = b''
 		while True:
 			try:
 				data = self.rtpSocket.recv(20480)
 				if data:
 					rtpPacket = RtpPacket()
 					rtpPacket.decode(data)
-					
+	
 					currFrameNbr = rtpPacket.seqNum()
 					print("Current Seq Num: " + str(currFrameNbr))
-										
-					if currFrameNbr > self.frameNbr: # Discard the late packet
-						self.frameNbr = currFrameNbr
-						self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
-			except:
-				# Stop listening upon requesting PAUSE or TEARDOWN
-				if self.playEvent.isSet(): 
+					# Update code: 
+
+				# TH1: Nhận được gói tin của khung hình mới hơn hiện tại 
+				if currFrameNbr > self.frameNbr:
+                # Reset buffer để đón khung hình mới 
+					self.currentFrameBuffer = b''
+					self.frameNbr = currFrameNbr
+					self.currentFrameBuffer += rtpPacket.getPayload()
+                
+                #TH2: Nhận được gói tin của khung hình cũ
+				elif currFrameNbr < self.frameNbr: 
+                    # có thể gói tin của frame cũ trôi mất đi đâu đó 
+                    # rồi bất ngờ quay lại => bỏ qua
+                    # có thể hiểu là một gói tin rác => vứt đi
+					continue
+                
+                #TH3: Nhận gói tin của khung hình hiện tại
+                # Lúc này chỉ cần cộng dồn vào buffer
+				elif currFrameNbr == self.frameNbr: 
+					self.currentFrameBuffer += rtpPacket.getPayload()
+
+            
+                # Check marker (để xem có phải mảnh cuối cùng của một frame hay không)
+				if rtpPacket.getMarker() == 1: 
+                        # Ghép xong
+					self.updateMovie(self.writeFrame(self.currentFrameBuffer))
+
+                        # Reset buffer để đón frame tiếp theo 
+					self.currentFrameBuffer = b''
+                                        
+			except socket.timeout:
+                # timeout: check for teardown or pause flag
+				if hasattr(self, "playEvent") and self.playEvent.is_set():
+					break
+				if self.teardownAcked == 1:
+					try:
+						self.rtpSocket.shutdown(socket.SHUT_RDWR)
+					except:
+						pass
+					self.rtpSocket.close()
+					break
+			except Exception:
+                # Any other error: if playEvent set or teardown acked, exit.
+				if hasattr(self, "playEvent") and self.playEvent.is_set():
 					break
 				
 				# Upon receiving ACK for TEARDOWN request,
 				# close the RTP socket
 				if self.teardownAcked == 1:
-					self.rtpSocket.shutdown(socket.SHUT_RDWR)
+					try:
+						self.rtpSocket.shutdown(socket.SHUT_RDWR)
+					except:
+						pass
 					self.rtpSocket.close()
 					break
 					

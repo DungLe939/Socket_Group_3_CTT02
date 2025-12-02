@@ -64,3 +64,10 @@ class RtpPacket:
 	def getPacket(self):
 		"""Return RTP packet."""
 		return self.header + self.payload
+	
+	#Update code: 
+	# Hàm hỗ trợ nhận biết biết đâu là gói tin cuối cùng (marker = 1)
+	def getMarker(self):
+		"""Return the Marker flag (1 bit)."""
+        # Marker nằm ở bit đầu tiên của byte thứ 2 (index 1)
+		return (self.header[1] >> 7) & 1

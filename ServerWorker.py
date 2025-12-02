@@ -18,7 +18,9 @@ class ServerWorker:
 	OK_200 = 0
 	FILE_NOT_FOUND_404 = 1
 	CON_ERR_500 = 2
-	
+	#Thêm vào Packet max size (độ lớn tối đa một gói tin gửi đi)
+	RTP_PACKET_MAX_SIZE = 1400
+
 	clientInfo = {}
 	
 	def __init__(self, clientInfo):
@@ -127,20 +129,42 @@ class ServerWorker:
 				try:
 					address = self.clientInfo['rtspSocket'][1][0]
 					port = int(self.clientInfo['rtpPort'])
-					self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber),(address,port))
+					# self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber),(address,port))
+
+					#Update code: 
+					# Phân mảnh bằng cách phân mảnh nếu file ảnh lớn hơn 1400 bytes
+					# Nếu ảnh lớn hơn 1400 bytes thì phân mảnh thành mảng để xử lý
+					data_bytes = bytes(data)
+
+					while len(data_bytes) > 0: 
+						if len(data_bytes) > self.RTP_PACKET_MAX_SIZE:
+							payload = data_bytes[:self.RTP_PACKET_MAX_SIZE]
+							data_bytes = data_bytes[self.RTP_PACKET_MAX_SIZE:]
+							marker = 0 #Đây chưa phải khung hình cuối cùng
+						else:
+							payload = data_bytes
+							data_bytes = b'' #Điều kiện dừng vòng lặp
+							marker = 1 #đây là khung hình cuối cùng 
+
+						#Gửi ảnh đi 
+						self.clientInfo['rtpSocket'].sendto(
+							self.makeRtp(payload, frameNumber, marker), 
+							(address, port)
+						)
 				except:
 					print("Connection Error")
 					#print('-'*60)
 					#traceback.print_exc(file=sys.stdout)
 					#print('-'*60)
 
-	def makeRtp(self, payload, frameNbr):
+	def makeRtp(self, payload, frameNbr, marker = 0):
 		"""RTP-packetize the video data."""
 		version = 2
 		padding = 0
 		extension = 0
 		cc = 0
-		marker = 0
+		# marker = 0
+		# phần này được chuyển vào tham số để hỗ trợ chức năng fragmentation
 		pt = 26 # MJPEG type
 		seqnum = frameNbr
 		ssrc = 0 
