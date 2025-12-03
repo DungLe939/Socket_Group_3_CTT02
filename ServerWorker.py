@@ -96,7 +96,9 @@ class ServerWorker:
 				print("processing PAUSE\n")
 				self.state = self.READY
 				
-				self.clientInfo['event'].set()
+				# Only stop event if it exists
+				if 'event' in self.clientInfo:
+					self.clientInfo['event'].set()
 			
 				self.replyRtsp(self.OK_200, seq[1])
 		
@@ -104,18 +106,20 @@ class ServerWorker:
 		elif requestType == self.TEARDOWN:
 			print("processing TEARDOWN\n")
 
-			self.clientInfo['event'].set()
+			if 'event' in self.clientInfo:
+				self.clientInfo['event'].set()
 			
 			self.replyRtsp(self.OK_200, seq[1])
 			
 			# Close the RTP socket
-			self.clientInfo['rtpSocket'].close()
+			if 'rtpSocket' in self.clientInfo:
+				self.clientInfo['rtpSocket'].close()
 			
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
 		while True:
 			# Can make feature speed control (FPS, Frame per second)
-			self.clientInfo['event'].wait(0.05) 
+			self.clientInfo['event'].wait(0.01) 
 			
 			# Stop sending if request is PAUSE or TEARDOWN
 			if self.clientInfo['event'].isSet(): 

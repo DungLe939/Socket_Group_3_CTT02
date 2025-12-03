@@ -1,0 +1,5 @@
+- thêm code vào hàm createWidgets, updateMovie, init, listenrtp, exitclient, pausemovie, playmovie, sendRtspRequest, parseRtspReply (Client.py)
++ Xây dựng UI thanh progress bar và buffer bar
++ Xử lý đa luồng và logic chạy của thanh buffer
+- Thêm code vào hàm sendRtp, processRtspRequest (ServerWorker.py)
+- thêm import tkinter.ttk as ttk
