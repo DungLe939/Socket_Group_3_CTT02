@@ -74,25 +74,22 @@ class Client:
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
 		self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
-
-		# test lines
 		
 		# Cache Bar
 		self.buffer_bar = ttk.Progressbar(self.master, orient = HORIZONTAL, length = 400, mode = 'determinate')
 		self.buffer_bar.grid(row = 1, column = 1, columnspan = 4, sticky = W + E, padx = 10, pady = (10, 0))
 		self.buffer_bar["maximum"] = 500 # Video frames length
-		# self.buffer_bar["maximum"] = 100 # Video frames length
 	
 		# Progress Bar
 		self.progress_slider = Scale(self.master, from_ = 0, to = 500, orient = HORIZONTAL, showvalue = 0, width = 10, troughcolor = 'white', activebackground = 'red', bd = 0)
 		self.progress_slider.grid(row = 2, column = 1, columnspan = 4, sticky = W + E, padx = 10)
 
 		# Cache Label
-		self.buffer_label = Label(self.master, text="0/100%")
+		self.buffer_label = Label(self.master, text="Cache:  0/100%")
 		self.buffer_label.grid(row=1, column=0, padx=5, pady=(10,0))
 
 		# Progress Label
-		self.progress_label = Label(self.master, text="0/100%")
+		self.progress_label = Label(self.master, text="Progress:  0/100%")
 		self.progress_label.grid(row=2, column=0, padx=5)
 
 	def setupMovie(self):
@@ -173,7 +170,7 @@ class Client:
 							percent = int((self.highest_received_frame / self.total_frames) * 100)
                             # Cap at 100% just in case
 							if percent > 100: percent = 100
-							self.buffer_label.config(text=f"{percent}/100%")
+							self.buffer_label.config(text=f"Cache: {percent}/100%")
 
 					if currFrameNbr > self.frameNbr: # Discard the late packet
 						self.frameNbr = currFrameNbr
@@ -221,7 +218,7 @@ class Client:
 				if self.total_frames > 0:
 					percent = int((frame_number / self.total_frames) * 100)
 					if percent > 100: percent = 100
-					self.progress_label.config(text=f"{percent}/100%")
+					self.progress_label.config(text=f"Progress: {percent}/100%")
 
 				file_name = CACHE_FILE_NAME + str(self.sessionId) +CACHE_FILE_EXT
 				with open(file_name, "wb") as file:
