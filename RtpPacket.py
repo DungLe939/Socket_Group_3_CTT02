@@ -37,6 +37,7 @@ class RtpPacket:
 		"""Decode the RTP packet."""
 		self.header = bytearray(byteStream[:HEADER_SIZE])
 		self.payload = byteStream[HEADER_SIZE:]
+		self.marker = (self.header[1] >> 7) & 1
 	
 	def version(self):
 		"""Return RTP version."""
@@ -65,9 +66,6 @@ class RtpPacket:
 		"""Return RTP packet."""
 		return self.header + self.payload
 	
-	#Update code: 
-	# Hàm hỗ trợ nhận biết biết đâu là gói tin cuối cùng (marker = 1)
 	def getMarker(self):
-		"""Return the Marker flag (1 bit)."""
-        # Marker nằm ở bit đầu tiên của byte thứ 2 (index 1)
+		"""Return the Marker flag (1 bit). """
 		return (self.header[1] >> 7) & 1
