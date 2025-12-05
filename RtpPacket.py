@@ -37,6 +37,7 @@ class RtpPacket:
 		"""Decode the RTP packet."""
 		self.header = bytearray(byteStream[:HEADER_SIZE])
 		self.payload = byteStream[HEADER_SIZE:]
+		self.marker = (self.header[1] >> 7) & 1
 	
 	def version(self):
 		"""Return RTP version."""
@@ -64,3 +65,7 @@ class RtpPacket:
 	def getPacket(self):
 		"""Return RTP packet."""
 		return self.header + self.payload
+	
+	def getMarker(self):
+		"""Return the Marker flag (1 bit). """
+		return (self.header[1] >> 7) & 1

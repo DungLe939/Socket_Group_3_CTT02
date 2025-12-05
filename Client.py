@@ -1,3 +1,4 @@
+from time import time
 from tkinter import *
 import tkinter.messagebox
 from PIL import Image, ImageTk
@@ -44,6 +45,10 @@ class Client:
 
 		self.BUFFER_CAP = 100 # Cache limit so server stop downloading after 100 frames
 		self.rtp_thread = None # Track the thread so we don't start duplicates
+		self.playEvent = threading.Event()
+
+		# --- MODIFICATION 1: Flag to track initial buffering ---
+		self.is_pre_buffering = False
 		
 	def createWidgets(self):
 		"""Build GUI."""
@@ -51,29 +56,29 @@ class Client:
 		self.setup = Button(self.master, width=20, padx=3, pady=3)
 		self.setup["text"] = "Setup"
 		self.setup["command"] = self.setupMovie
-		self.setup.grid(row=3, column=0, padx=2, pady=2)
+		self.setup.grid(row=3, column=1, rowspan=2, sticky=N+S, padx=2, pady=2)
 		
 		# Create Play button		
 		self.start = Button(self.master, width=20, padx=3, pady=3)
 		self.start["text"] = "Play"
 		self.start["command"] = self.playMovie
-		self.start.grid(row=3, column=1, padx=2, pady=2)
+		self.start.grid(row=3, column=2, rowspan=2, sticky=N+S, padx=2, pady=2)
 		
 		# Create Pause button			
 		self.pause = Button(self.master, width=20, padx=3, pady=3)
 		self.pause["text"] = "Pause"
 		self.pause["command"] = self.pauseMovie
-		self.pause.grid(row=3, column=2, padx=2, pady=2)
+		self.pause.grid(row=3, column=3, rowspan=2, sticky=N+S, padx=2, pady=2)
 		
 		# Create Teardown button
 		self.teardown = Button(self.master, width=20, padx=3, pady=3)
 		self.teardown["text"] = "Teardown"
 		self.teardown["command"] =  self.exitClient
-		self.teardown.grid(row=3, column=3, padx=2, pady=2)
+		self.teardown.grid(row=3, column=4, rowspan=2, sticky=N+S, padx=2, pady=2)
 		
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
-		self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
+		self.label.grid(row=0, column=1, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
 		
 		# Cache Bar
 		self.buffer_bar = ttk.Progressbar(self.master, orient = HORIZONTAL, length = 400, mode = 'determinate')
@@ -84,17 +89,46 @@ class Client:
 		self.progress_slider = Scale(self.master, from_ = 0, to = 500, orient = HORIZONTAL, showvalue = 0, width = 10, troughcolor = 'white', activebackground = 'red', bd = 0)
 		self.progress_slider.grid(row = 2, column = 1, columnspan = 4, sticky = W + E, padx = 10)
 
-		# Cache Label
-		self.buffer_label = Label(self.master, text="Cache:  0/100%")
-		self.buffer_label.grid(row=1, column=0, padx=5, pady=(10,0))
+		# Bar Name
+		self.buffer_name = Label(self.master, text="Cache Bar")
+		self.buffer_name.grid(row=1, column=0, padx=5, pady=(10,0))
 
-		# Progress Label
-		self.progress_label = Label(self.master, text="Progress:  0/100%")
-		self.progress_label.grid(row=2, column=0, padx=5)
+		self.progress_name = Label(self.master, text="Progress Bar")
+		self.progress_name.grid(row=2, column=0, padx=5)
+
+		# Cache Percentage
+		self.buffer_label = Label(self.master, text="0/100%")
+		self.buffer_label.grid(row=1, column=5, padx=5, pady=(10,0))
+
+		# Progress Percentage
+		self.progress_label = Label(self.master, text="0/100%")
+		self.progress_label.grid(row=2, column=5, padx=5)
+
+		# FPS Box
+		self.label_fps = Label(self.master, text = "FPS", height = 2)
+		self.label_fps.grid(row = 3, column = 0, padx = 2, pady = 2)
+		fps_values = [20, 24, 30, 35, 45, 60]
+
+		self.fps_box = ttk.Combobox(self.master, values=fps_values, width=5, state="readonly")
+
+		# Đặt giá trị mặt định
+		self.fps_box.current(0)
+		self.fps_box.grid(row=4, column=0, padx=2, pady=2)
+
+		# HD/ Normal Box
+		self.label_quality = Label(self.master, text = "Quality", height = 2)
+		self.label_quality.grid(row=3, column=5, padx=2, pady=2)
+		quality_values = ["Normal", "HD"]
+
+		self.quality_box = ttk.Combobox(self.master, values = quality_values, width=7, state="readonly")
+		self.quality_box.current(0)
+		self.quality_box.grid(row=4, column=5, padx=2, pady=2)
 
 	def setupMovie(self):
 		"""Setup button handler."""
 		if self.state == self.INIT:
+			# --- MODIFICATION 1: Enable pre-buffering flag ---
+			self.is_pre_buffering = True
 			self.sendRtspRequest(self.SETUP)
 	
 	def exitClient(self):
@@ -113,6 +147,8 @@ class Client:
 	def playMovie(self):
 		"""Play button handler."""
 		if self.state == self.READY:
+			# --- MODIFICATION 1: If user clicks Play, stop auto-buffering logic ---
+			self.is_pre_buffering = False
 
 			# Only start listening thread if it's not running
 			if self.rtp_thread is None or not self.rtp_thread.is_alive():
@@ -137,22 +173,32 @@ class Client:
 	
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
+		current_gathering_payload = b''
 		while True:
 			try:
 				curr_buffer = len(self.framebuffer)
 
-				# Check if buffer passes the limit (100), if so pause buffering
-				if curr_buffer >= self.BUFFER_CAP:
-					if self.requestSent != self.PAUSE:
-						self.sendRtspRequest(self.PAUSE)
+				# --- MODIFICATION 1: Auto-Pause if pre-buffering hits 30 frames ---
+				if self.is_pre_buffering and curr_buffer >= 30:
+					print("DEBUG: Pre-buffering complete (30 frames). Pausing download.")
+					self.sendRtspRequest(self.PAUSE)
+					self.is_pre_buffering = False
+					self.state = self.READY
 
-				# Check if buffer is below the minimum (80), if so play buffering
-				elif curr_buffer < (self.BUFFER_CAP - 20):
-					if self.requestSent == self.PAUSE:
-						self.sendRtspRequest(self.PLAY)
+				# Standard buffer protection (only active if NOT pre-buffering)
+				if not self.is_pre_buffering:
+					# Check if buffer passes the limit (100), if so pause buffering
+					if curr_buffer >= self.BUFFER_CAP:
+						if self.requestSent != self.PAUSE:
+							self.sendRtspRequest(self.PAUSE)
+
+					# Check if buffer is below the minimum (80), if so play buffering
+					elif curr_buffer < (self.BUFFER_CAP - 20):
+						if self.requestSent == self.PAUSE:
+							self.sendRtspRequest(self.PLAY)
 
 				# Receive data
-				data, addr = self.rtpSocket.recvfrom(20480)
+				data, addr = self.rtpSocket.recvfrom(65535)
 				if data:
 					rtpPacket = RtpPacket()
 					rtpPacket.decode(data)
@@ -164,17 +210,19 @@ class Client:
 					if currFrameNbr > self.highest_received_frame:
 						self.highest_received_frame = currFrameNbr
 						self.buffer_bar["value"] = self.highest_received_frame
+						current_gathering_payload = b''
 
 						# UPDATE BUFFER PERCENT LABEL
 						if self.total_frames > 0:
 							percent = int((self.highest_received_frame / self.total_frames) * 100)
                             # Cap at 100% just in case
 							if percent > 100: percent = 100
-							self.buffer_label.config(text=f"Cache: {percent}/100%")
+							self.buffer_label.config(text=f"{percent}/100%")
 
 					if currFrameNbr > self.frameNbr: # Discard the late packet
 						self.frameNbr = currFrameNbr
 						self.framebuffer.append((currFrameNbr, rtpPacket.getPayload()))
+						current_gathering_payload = b''
 
 			except socket.timeout:
 				# If server stopped sending because we sent pause, socket will timeout
@@ -218,20 +266,34 @@ class Client:
 				if self.total_frames > 0:
 					percent = int((frame_number / self.total_frames) * 100)
 					if percent > 100: percent = 100
-					self.progress_label.config(text=f"Progress: {percent}/100%")
+					self.progress_label.config(text=f"{percent}/100%")
 
 				file_name = CACHE_FILE_NAME + str(self.sessionId) +CACHE_FILE_EXT
 				with open(file_name, "wb") as file:
 					file.write(image_data)
 				
 				try:
-					photo = ImageTk.PhotoImage(Image.open(file_name))
-					self.label.configure(image = photo, height = 288)
+					# --- MODIFICATION 2: Resize Video (Max 960x540, Keep Aspect Ratio) ---
+					image = Image.open(file_name)
+
+					orig_w, orig_h = image.size
+					max_w, max_h = 960, 540
+					ratio = min(max_w / orig_w, max_h / orig_h)
+
+					new_w = int(orig_w * ratio)
+					new_h = int(orig_h * ratio)
+
+					image = image.resize((new_w, new_h)) # Force resize
+
+					photo = ImageTk.PhotoImage(image)
+					self.label.configure(image = photo, height = new_h)
 					self.label.image = photo
 				except:
 					print("Bad frame")
 
-			self.master.after(60, self.updateMovie)
+			delay = int(1000 / self.fps)
+			self.master.after(delay, self.updateMovie)
+			# self.master.after(60, self.updateMovie)
 
 	def connectToServer(self):
 		"""Connect to the Server. Start a new RTSP/TCP session."""
@@ -260,7 +322,36 @@ class Client:
 			# C: Transport: RTP/UDP; client_port=25000
 			request = "SETUP " + str(self.fileName) + " RTSP/1.0\n"
 			request += "CSeq: " + str(self.rtspSeq) + "\n"
-			request += "Transport: RTP/UDP;" + " client_port=" + str(self.rtpPort)
+			request += "Transport: RTP/UDP;" + " client_port=" + str(self.rtpPort) + "\n"
+
+			# FPS
+			fps_val = 20
+			try:
+				if hasattr(self, 'fps_box'):
+					val = self.fps_box.get()
+					if val:
+						self.fps = int(val)
+			except: 
+				pass
+
+			request += "Frame-Rate: " + str(fps_val) + "\n"
+
+			# Quality
+			quality_val = "Normal"
+			try:
+				if hasattr(self, 'quality_box'):
+					quality_val = self.quality_box.get()
+			except:
+				pass
+
+			request += "X-Quality: " + str(quality_val)
+
+			# Lấy giá trị fps mà người dùng chọn 
+			try:
+				fps_val = int(self.fps_box.get())
+			except:
+				fps_val = 20 # default fps value
+
 			# Keep track of the sent request.
 			self.requestSent = self.SETUP
 		
@@ -384,6 +475,14 @@ class Client:
 							
 							# Open RTP port.
 							self.openRtpPort() 
+
+							# --- MODIFICATION 1: Auto-Trigger PLAY for pre-buffering ---
+							print("DEBUG: SETUP Done. Auto-starting pre-buffering...")
+							if self.rtp_thread is None or not self.rtp_thread.is_alive():
+								self.rtp_thread = threading.Thread(target = self.listenRtp)
+								self.rtp_thread.start()
+							self.sendRtspRequest(self.PLAY)
+
 						elif self.requestSent == self.PLAY:
 							pass
 						elif self.requestSent == self.PAUSE:

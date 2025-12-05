@@ -9,13 +9,17 @@ class VideoStream:
 		
 	def nextFrame(self):
 		"""Get next frame."""
-		data = self.file.read(5) # Get the framelength from the first 5 bits
-		if data: 
-			framelength = int(data)
-							
-			# Read the current frame
-			data = self.file.read(framelength)
-			self.frameNum += 1
+		data = self.file.read(6) # Get the framelength from the first 5 bits
+		if data:
+			try:
+				framelength = int(data)
+				# Read the current frame
+				data = self.file.read(framelength)
+				self.frameNum += 1
+			except ValueError:
+				print("Loi doc Header: Khong phai so nguyen. File co the bi hong hoac sai dinh dang")	
+				data = None
+
 		return data
 		
 	def frameNbr(self):
@@ -29,7 +33,7 @@ class VideoStream:
 		while True:
 			try:
 				# Read frame length (assumes 5 bytes length header as per standard assignments)
-				data = temp_file.read(5)
+				data = temp_file.read(6)
 				if not data:
 					break
 				length = int(data)
