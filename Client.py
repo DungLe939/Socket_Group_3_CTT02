@@ -40,6 +40,7 @@ class Client:
 
 		self.framebuffer = []
 		self.highest_received_frame = 0
+		self.total_frames = 100 # Default fallback, will update after SETUP
 
 		self.BUFFER_CAP = 100 # Cache limit so server stop downloading after 100 frames
 		self.rtp_thread = None # Track the thread so we don't start duplicates
@@ -76,12 +77,21 @@ class Client:
 
 		# Cache Bar
 		self.buffer_bar = ttk.Progressbar(self.master, orient = HORIZONTAL, length = 400, mode = 'determinate')
-		self.buffer_bar.grid(row = 1, column = 0, columnspan = 4, sticky = W + E, padx = 10, pady = (10, 0))
+		self.buffer_bar.grid(row = 1, column = 1, columnspan = 4, sticky = W + E, padx = 10, pady = (10, 0))
 		self.buffer_bar["maximum"] = 500 # Video frames length
+		# self.buffer_bar["maximum"] = 100 # Video frames length
 	
 		# Progress Bar
 		self.progress_slider = Scale(self.master, from_ = 0, to = 500, orient = HORIZONTAL, showvalue = 0, width = 10, troughcolor = 'white', activebackground = 'red', bd = 0)
-		self.progress_slider.grid(row = 2, column = 0, columnspan = 4, sticky = W + E, padx = 10)
+		self.progress_slider.grid(row = 2, column = 1, columnspan = 4, sticky = W + E, padx = 10)
+
+		# Cache Label
+		self.buffer_label = Label(self.master, text="0/100%")
+		self.buffer_label.grid(row=1, column=0, padx=5, pady=(10,0))
+
+		# Progress Label
+		self.progress_label = Label(self.master, text="0/100%")
+		self.progress_label.grid(row=2, column=0, padx=5)
 
 	def setupMovie(self):
 		"""Setup button handler."""
@@ -93,7 +103,7 @@ class Client:
 		self.sendRtspRequest(self.TEARDOWN)		
 		self.master.destroy() # Close the gui window
 		os.remove(CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT) # Delete the cache image from video
-
+			
 	def pauseMovie(self):
 		"""Pause button handler."""
 		if self.state == self.PLAYING:
@@ -156,6 +166,13 @@ class Client:
 						self.highest_received_frame = currFrameNbr
 						self.buffer_bar["value"] = self.highest_received_frame
 
+						# UPDATE BUFFER PERCENT LABEL
+						if self.total_frames > 0:
+							percent = int((self.highest_received_frame / self.total_frames) * 100)
+                            # Cap at 100% just in case
+							if percent > 100: percent = 100
+							self.buffer_label.config(text=f"{percent}/100%")
+
 					if currFrameNbr > self.frameNbr: # Discard the late packet
 						self.frameNbr = currFrameNbr
 						self.framebuffer.append((currFrameNbr, rtpPacket.getPayload()))
@@ -198,6 +215,12 @@ class Client:
 				frame_number, image_data = self.framebuffer.pop(0)
 				self.progress_slider.set(frame_number)
 
+				# UPDATE PROGRESS PERCENT LABEL
+				if self.total_frames > 0:
+					percent = int((frame_number / self.total_frames) * 100)
+					if percent > 100: percent = 100
+					self.progress_label.config(text=f"{percent}/100%")
+
 				file_name = CACHE_FILE_NAME + str(self.sessionId) +CACHE_FILE_EXT
 				with open(file_name, "wb") as file:
 					file.write(image_data)
@@ -209,7 +232,7 @@ class Client:
 				except:
 					print("Bad frame")
 
-			self.master.after(50, self.updateMovie)
+			self.master.after(60, self.updateMovie)
 
 	def connectToServer(self):
 		"""Connect to the Server. Start a new RTSP/TCP session."""
@@ -322,6 +345,30 @@ class Client:
 			# Process only if the server reply's sequence number is the same as the request's
 			if seqNum == self.rtspSeq:
 				session = int(lines[2].split(' ')[1])
+
+				# Check for Total-Frames header (usually line 3 if present)
+				for line in lines:
+					if "Total-Frames" in line:
+						try:
+							self.total_frames = int(line.split(' ')[1])
+							print(f"DEBUG: Total Video Frames: {self.total_frames}")
+							
+							# Only update GUI if we are NOT tearing down
+							if self.requestSent != self.TEARDOWN:
+								# Small helper function to update the GUI
+								def update_gui_limits():
+									# Update Progress Bar limits
+									self.buffer_bar["maximum"] = self.total_frames
+									self.progress_slider.configure(to = self.total_frames)
+
+								# Use .after(0, ...) to force this to run on the Main Thread
+								try:
+									self.master.after(0, update_gui_limits)
+								except:
+									print("Window already closed, skipping GUI update")
+						except Exception as e:
+							print(f"Error parsing frames: {e}")
+
 				# New RTSP session ID
 				if self.sessionId == 0:
 					self.sessionId = session

@@ -23,6 +23,8 @@ class ServerWorker:
 	
 	def __init__(self, clientInfo):
 		self.clientInfo = clientInfo
+		# Initialize total frames
+		self.clientInfo['total_frames'] = 0
 		
 	def run(self):
 		threading.Thread(target=self.recvRtspRequest).start()
@@ -61,6 +63,8 @@ class ServerWorker:
 				
 				try:
 					self.clientInfo['videoStream'] = VideoStream(filename)
+					# # Calculate total frames
+					self.clientInfo['total_frames'] = self.clientInfo['videoStream'].calNumFrames()
 					self.state = self.READY
 				except IOError:
 					self.replyRtsp(self.FILE_NOT_FOUND_404, seq[1])
@@ -160,6 +164,11 @@ class ServerWorker:
 		if code == self.OK_200:
 			#print("200 OK")
 			reply = 'RTSP/1.0 200 OK\nCSeq: ' + seq + '\nSession: ' + str(self.clientInfo['session'])
+
+			# Send the total frames in the header if available
+			if self.clientInfo['total_frames'] > 0:
+				reply += '\nTotal-Frames: ' + str(self.clientInfo['total_frames'])
+
 			connSocket = self.clientInfo['rtspSocket'][0]
 			connSocket.send(reply.encode())
 		

@@ -22,4 +22,21 @@ class VideoStream:
 		"""Get frame number."""
 		return self.frameNum
 	
-	
+	def calNumFrames(self):
+		"""Calculates total number of frames in the video file."""
+		temp_file = open(self.filename, 'rb')
+		count = 0
+		while True:
+			try:
+				# Read frame length (assumes 5 bytes length header as per standard assignments)
+				data = temp_file.read(5)
+				if not data:
+					break
+				length = int(data)
+				# Skip the frame data
+				temp_file.seek(length, 1)
+				count += 1
+			except:
+				break
+		temp_file.close()
+		return count
