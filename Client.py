@@ -75,6 +75,8 @@ class Client:
 		self.label = Label(self.master, height=19)
 		self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
 
+		# test lines
+		
 		# Cache Bar
 		self.buffer_bar = ttk.Progressbar(self.master, orient = HORIZONTAL, length = 400, mode = 'determinate')
 		self.buffer_bar.grid(row = 1, column = 1, columnspan = 4, sticky = W + E, padx = 10, pady = (10, 0))
