@@ -246,7 +246,7 @@ class ServerWorker:
 							payload=payload_chunk
 						)
 						self.clientInfo['rtpSocket'].sendto(self.clientInfo['rtpPacket'].getPacket(), (address, port))
-						time.sleep(0.0001)
+						time.sleep(0.000000001)
 						start_pos = end_pos
 
 				except Exception as e:
