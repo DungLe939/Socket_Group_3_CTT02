@@ -50,6 +50,10 @@ class Client:
 		# --- MODIFICATION 1: Flag to track initial buffering ---
 		self.is_pre_buffering = False
 		
+		# --- MODIFICATION 3: Reassembly Buffer ---
+		self.current_gathering_payload = b''
+		self.current_gathering_seq = -1
+		
 	def createWidgets(self):
 		"""Build GUI."""
 		# Create Setup button
@@ -204,25 +208,44 @@ class Client:
 					rtpPacket.decode(data)
 					
 					currFrameNbr = rtpPacket.seqNum()
-					print("Current Seq Num: " + str(currFrameNbr))
+					# print("Current Seq Num: " + str(currFrameNbr))
+					
+					# --- REASSEMBLY LOGIC START ---
+					# If this is a new frame (different sequence number than what we are gathering), reset.
+					if currFrameNbr != self.current_gathering_seq:
+						self.current_gathering_seq = currFrameNbr
+						self.current_gathering_payload = b''
+					
+					# Append chunk
+					self.current_gathering_payload += rtpPacket.getPayload()
+					
+					# Check Marker to see if this is the last fragment of the frame
+					# (Assuming capabilities of RtpPacket.py: getMarker() returns 1 if set)
+					if rtpPacket.getMarker():
+						# Frame complete!
+						
+						# Check if this frame is newer than what we have shown
+						if currFrameNbr > self.highest_received_frame:
+							self.highest_received_frame = currFrameNbr
+							
+							# Thread-safe UI update
+							def update_buffer_ui(val=self.highest_received_frame):
+								self.buffer_bar["value"] = val
+								if self.total_frames > 0:
+									percent = int((val / self.total_frames) * 100)
+									if percent > 100: percent = 100
+									self.buffer_label.config(text=f"{percent}/100%")
+							
+							self.master.after(0, update_buffer_ui)
 
-					# Check if the current frame is bigger than the received frame
-					if currFrameNbr > self.highest_received_frame:
-						self.highest_received_frame = currFrameNbr
-						self.buffer_bar["value"] = self.highest_received_frame
-						current_gathering_payload = b''
-
-						# UPDATE BUFFER PERCENT LABEL
-						if self.total_frames > 0:
-							percent = int((self.highest_received_frame / self.total_frames) * 100)
-                            # Cap at 100% just in case
-							if percent > 100: percent = 100
-							self.buffer_label.config(text=f"{percent}/100%")
-
-					if currFrameNbr > self.frameNbr: # Discard the late packet
-						self.frameNbr = currFrameNbr
-						self.framebuffer.append((currFrameNbr, rtpPacket.getPayload()))
-						current_gathering_payload = b''
+						# Add to framebuffer if it's new
+						if currFrameNbr > self.frameNbr:
+							self.frameNbr = currFrameNbr
+							self.framebuffer.append((currFrameNbr, self.current_gathering_payload))
+							
+						# Reset aggregation for safety (though next seqNum change will do it too)
+						self.current_gathering_payload = b''
+					# --- REASSEMBLY LOGIC END ---
 
 			except socket.timeout:
 				# If server stopped sending because we sent pause, socket will timeout

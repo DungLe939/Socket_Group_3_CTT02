@@ -206,7 +206,11 @@ class ServerWorker:
 		"""Send RTP packets over UDP."""
 		while True:
 			# Can make feature speed control (FPS, Frame per second)
-			self.clientInfo['event'].wait(0.01) 
+			if 'fps_interval' in self.clientInfo:
+				wait_time = self.clientInfo['fps_interval']
+			else:
+				wait_time = 0.05
+			self.clientInfo['event'].wait(wait_time) 
 			
 			# Stop sending if request is PAUSE or TEARDOWN
 			if self.clientInfo['event'].isSet(): 
@@ -219,7 +223,7 @@ class ServerWorker:
 					# address = self.clientInfo['rtspSocket'][1][0]
 					address = self.clientInfo['rtpAddr']
 					port = int(self.clientInfo['rtpPort'])
-					self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber, 1),(address,port))
+					# self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber, 1),(address,port))
 
 					MAX_PAYLOAD = 1400
 					data_len = len(data)
